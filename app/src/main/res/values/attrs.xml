@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <declare-styleable name="SteeringWheelStyle">
+        <attr name="inner_radius" format="dimension"/>
+        <attr name="inner_bg" format="color"/>
+        <attr name="out_radius" format="dimension"/>
+        <attr name="out_bg" format="color"/>
+    </declare-styleable>
+
+</resources>

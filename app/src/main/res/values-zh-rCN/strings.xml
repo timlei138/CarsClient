@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">智能小车控制</string>
+
+    <string name="open_camera">打开摄像头</string>
+    <string name="close_camera">关闭摄像头</string>
+    <string name="start_car">启动</string>
+    <string name="stop_car">停车</string>
+    <string name="title_no_preview">没有预览</string>
+    <string name="title_camera_error">Camera异常</string>
+
+</resources>

@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">CarClient</string>
+
+    <string name="open_camera">Open Camera</string>
+    <string name="close_camera">Close Camera</string>
+    <string name="start_car">Start</string>
+    <string name="stop_car">Parking</string>
+
+    <string name="title_no_preview">No Preview</string>
+    <string name="title_camera_error">Camer Error</string>
+</resources>
