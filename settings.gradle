@@ -1,2 +1,2 @@
-include ':app'
+include ':app', ':Car', ':Command'
 rootProject.name='CarsClient'
