@@ -8,7 +8,7 @@
 
 
     <SurfaceView
-        android:id="@+id/pewView"
+        android:id="@+id/preView"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
@@ -18,9 +18,9 @@
         android:layout_height="wrap_content"
         android:text="@string/title_no_preview"
         android:textSize="32sp"
-        app:layout_constraintBottom_toBottomOf="@+id/pewView"
-        app:layout_constraintEnd_toEndOf="@+id/pewView"
-        app:layout_constraintStart_toStartOf="@+id/pewView"
+        app:layout_constraintBottom_toBottomOf="@+id/preView"
+        app:layout_constraintEnd_toEndOf="@+id/preView"
+        app:layout_constraintStart_toStartOf="@+id/preView"
         app:layout_constraintTop_toTopOf="parent" />
 
     <com.lc.carsclient.widget.SteeringWheel
@@ -46,7 +46,7 @@
 
 
     <Button
-        android:id="@+id/cameraControl"
+        android:id="@+id/openCamera"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="@string/open_camera"

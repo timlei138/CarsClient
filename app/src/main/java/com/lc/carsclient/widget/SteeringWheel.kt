@@ -15,19 +15,19 @@ class SteeringWheel @JvmOverloads constructor(context: Context, attrs: Attribute
     defStyleRes: Int = 0
 ) : View(context,attrs, defStyleAttr, defStyleRes){
 
-    var innerCircle: Int
-    var outCirclce: Int
-    var innerColor: Int
-    var outColor: Int
-    var mInnerPaint = Paint()
-    var mOutPaint = Paint()
-    val innerRadius: Float
-    var outRectF  = RectF();
-    var innerRectF = RectF()
-    var restore = true
+    private var innerCircle: Int
+    private var outCirclce: Int
+    private var innerColor: Int
+    private var outColor: Int
+    private var mInnerPaint = Paint()
+    private var mOutPaint = Paint()
+    private val innerRadius: Float
+    private var outRectF  = RectF();
+    private var innerRectF = RectF()
+    private var restore = true
 
-    var moveX = 0f;
-    var moveY = 0f;
+    private var moveX = 0f;
+    private var moveY = 0f;
 
 
     init {

@@ -1,12 +1,16 @@
 package com.lc.carsclient.service
 
+import android.graphics.ImageFormat
+import android.graphics.YuvImage
 import com.orhanobut.logger.Logger
+import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.DataInputStream
+import java.io.InputStream
 import java.net.ServerSocket
 import java.net.Socket
 
-class InnerService private constructor(){
+class InnerService private constructor() : Thread(){
 
     companion object {
 
@@ -15,24 +19,34 @@ class InnerService private constructor(){
         }
 
     }
+
+
     var server : Socket? = null
 
     var writeThread: WriteThread? = null
     var readThread: ReadThread? = null
 
 
+    var host: String? = null
+    var port: Int = 9999
 
-    fun connect(ip: String ,port: Int): Boolean{
-        server = Socket(ip,port)
+
+
+    var preViewCallbakc: ((data: ByteArray) -> Unit)? = null
+    var msgCallback: ((msg: String) -> Unit)? = null
+
+
+    override fun run() {
+        super.run()
+        Logger.d("connect server")
+        server = Socket(host,port)
         server?.keepAlive = true
         if(server != null && server!!.isConnected){
             writeThread = WriteThread(server!!)
             readThread = ReadThread(server!!)
             writeThread?.start()
             readThread?.start()
-            return true;
         }
-        return false;
     }
 
     //发送行车控制命令
@@ -53,10 +67,9 @@ class InnerService private constructor(){
 
 
     inner class WriteThread(socket: Socket) : Thread(){
-
         val fos: BufferedOutputStream
         private val writeLock = Object()
-        private val cmd: IntArray = IntArray(1)
+        private val cmd: IntArray = IntArray(1){-1}
 
         init {
             fos =  BufferedOutputStream(socket.getOutputStream())
@@ -70,14 +83,17 @@ class InnerService private constructor(){
 
         override fun run() {
             while (!quite){
-                if(cmd[0] != -1){
-                    Logger.d("send driving command ${cmd[0]}")
-                    fos.write(cmd[0])
-                    fos.flush()
+                synchronized(writeLock){
+                    if(cmd[0] != -1){
+                        Logger.d("send driving command ${cmd[0]}")
+                        fos.write(cmd[0])
+                        fos.flush()
+                    }
+                    else
+                        Logger.d("invalid Cmd")
+                    writeLock.wait()
                 }
-                else
-                    Logger.d("invalid Cmd")
-                writeLock.wait()
+
             }
 
             fos.close()
@@ -85,34 +101,21 @@ class InnerService private constructor(){
         }
     }
 
-    inner class ReadThread(socket: Socket) : Thread(){
+    inner class ReadThread(val socket: Socket) : Thread(){
 
-        val dis: DataInputStream
-
-
+        var dis: InputStream
         init {
-            dis = DataInputStream(socket.getInputStream())
+            dis = socket.getInputStream()
         }
 
         override fun run() {
-
-           while (!quite){
-
-               val type = dis.readInt()
-
-               when(type){
-
-                   0x10 -> {
-
-
-                   }
-
-                   0x20 ->{
-
-                   }
-               }
-
-           }
+            Logger.d("read thread run... $quite")
+            while (!quite){
+                val byteArray = ByteArray(1024 * 1024)
+                dis.read(byteArray)
+                Logger.d("read bytes:${byteArray.size}")
+                preViewCallbakc?.invoke(byteArray)
+            }
 
         }
     }
