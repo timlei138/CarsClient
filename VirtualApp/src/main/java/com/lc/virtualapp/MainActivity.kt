@@ -266,7 +266,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             textureView.surfaceTextureListener = surfaceTextureListener
         }
-        InnerServer.instance.start()
+        InnerServer.instance.FindClientThread().start()
     }
 
     override fun onStop() {

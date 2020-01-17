@@ -1,16 +1,14 @@
 package com.lc.carsclient.service
 
-import android.graphics.ImageFormat
-import android.graphics.YuvImage
+import com.lc.command.*
 import com.orhanobut.logger.Logger
-import java.io.BufferedInputStream
-import java.io.BufferedOutputStream
-import java.io.DataInputStream
-import java.io.InputStream
-import java.net.ServerSocket
-import java.net.Socket
 
-class InnerService private constructor() : Thread(){
+import java.io.BufferedOutputStream
+
+import java.io.InputStream
+import java.net.*
+
+class InnerService private constructor(){
 
     companion object {
 
@@ -21,42 +19,23 @@ class InnerService private constructor() : Thread(){
     }
 
 
-    var server : Socket? = null
-
     var writeThread: WriteThread? = null
     var readThread: ReadThread? = null
 
-
-    var host: String? = null
-    var port: Int = 9999
+    private var host: String? = null
 
 
 
     var preViewCallbakc: ((data: ByteArray) -> Unit)? = null
     var msgCallback: ((msg: String) -> Unit)? = null
-
-
-    override fun run() {
-        super.run()
-        Logger.d("connect server")
-        server = Socket(host,port)
-        server?.keepAlive = true
-        if(server != null && server!!.isConnected){
-            writeThread = WriteThread(server!!)
-            readThread = ReadThread(server!!)
-            writeThread?.start()
-            readThread?.start()
-        }
-    }
-
     //发送行车控制命令
     fun sendDrivingCommand(){
         writeThread?.sendDrivingCommand()
     }
 
-    val isConnected
-        get() = server?.isConnected ?: false
 
+    var isFindDevice: Boolean = false
+        get() = host?.isNotEmpty() ?: false
 
     var quite: Boolean = false
         set(value) {
@@ -64,6 +43,40 @@ class InnerService private constructor() : Thread(){
                 field = value
             }
         }
+
+
+    inner class SearchCarDevice(val cb: (Boolean) -> Unit) : Thread(){
+
+        override fun run() {
+            Logger.d("start find device...")
+            sleep(3000)
+            val socket = DatagramSocket();
+            val dataByte = COMMAND_FLAG.toByteArray()
+            val packet = DatagramPacket(dataByte,dataByte.size,
+                InetAddress.getByName(BROADCAST_HOST), UDP_PORT)
+            socket.broadcast = true
+            socket.send(packet)
+            Logger.d("$isFindDevice")
+            while (!isFindDevice){
+                val receiveBuf = ByteArray(32)
+                val receivePacket = DatagramPacket(receiveBuf,receiveBuf.size)
+                socket.receive(receivePacket)
+                Logger.d("receiver msg${String(receiveBuf)}")
+                receivePacket.apply {
+                    if(String(receiveBuf,0,length) == COMMAND_FLAG){
+                        host = address.hostAddress
+                        Logger.d("find device host-> $host")
+                        isFindDevice = true
+                        cb.invoke(true)
+
+
+                    }
+                }
+            }
+        }
+
+
+    }
 
 
     inner class WriteThread(socket: Socket) : Thread(){
@@ -111,13 +124,22 @@ class InnerService private constructor() : Thread(){
         override fun run() {
             Logger.d("read thread run... $quite")
             while (!quite){
-                val byteArray = ByteArray(1024 * 1024)
-                dis.read(byteArray)
-                Logger.d("read bytes:${byteArray.size}")
-                preViewCallbakc?.invoke(byteArray)
+                val type = dis.read()
+                Logger.d("type -> $type")
+                if(type == TYPE_VIDEO){
+                    val lenArray = ByteArray(4)
+                    dis.read(lenArray)
+                    Logger.d("${lenArray[0]} ${lenArray[1]} ${lenArray[2]} ${lenArray[3]}")
+                    val len = BytesUtils.byteArrayToInt(lenArray)
+                    Logger.d("lenght $len")
+                    val data = ByteArray(len)
+                    dis.read(data,0,len)
+                    preViewCallbakc?.invoke(data)
+                }
             }
 
         }
+
     }
 
 

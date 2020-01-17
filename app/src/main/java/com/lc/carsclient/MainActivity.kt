@@ -1,5 +1,6 @@
 package com.lc.carsclient
 
+import android.app.ProgressDialog
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -7,17 +8,19 @@ import android.graphics.Paint
 import android.nfc.Tag
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.os.Handler
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import com.lc.carsclient.service.InnerService
 import com.orhanobut.logger.Logger
 import kotlinx.android.synthetic.main.activity_main.*
-import org.jetbrains.anko.alert
-import org.jetbrains.anko.toast
+import org.jetbrains.anko.*
 import java.util.*
 import java.util.concurrent.LinkedBlockingQueue
+import org.jetbrains.anko.progressDialog as progressDialog1
 
 class MainActivity : AppCompatActivity() {
 
@@ -30,6 +33,10 @@ class MainActivity : AppCompatActivity() {
 
     private val paint = Paint()
 
+    private var findProgress: ProgressDialog? = null;
+
+    private val updateHandler: Handler = Handler()
+
     val mFrameQueue: FrameQueue = FrameQueue()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,27 +44,18 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         startCar.setOnClickListener{
-            alert {
-                title("请输入车辆信息")
-                val view = layoutInflater.inflate(R.layout.layout_host,null)
-                customView(view)
-                val hostEd = view.findViewById<EditText>(R.id.hostEd)
-                val portEd = view.findViewById<EditText>(R.id.portEd)
-                positiveButton {
-                    val host = hostEd?.text.toString()
-                    val port = portEd.text.toString()
-                    if (host.isNullOrEmpty() || port.isNullOrEmpty()){
-                        toast("IP地址或者端口不能为空！")
-                        return@positiveButton
+            indeterminateProgressDialog("正在查找设备...","发现设备") {
+                setCanceledOnTouchOutside(false)
+                findProgress = this
+                service.SearchCarDevice {
+                    if(it){
+                        findProgress?.dismiss()
                     }
-                    service.host = "192.168.1.102"
-                    service.port = 9999
-                    service.start()
-                }
-                negativeButton {
-                    toast("缺少必要的参数无法连接车辆")
-                    dismiss()
-                }
+                }.start()
+                updateHandler.postDelayed({
+                    findProgress?.dismiss()
+                    toast("未找到小车，请检查网络再试")
+                },10000)
             }.show()
         }
 
@@ -75,10 +73,6 @@ class MainActivity : AppCompatActivity() {
 
 
     }
-
-
-
-
 
 
     val callback = object : SurfaceHolder.Callback{
@@ -136,7 +130,6 @@ class MainActivity : AppCompatActivity() {
                     bitmap = BitmapFactory.decodeByteArray(frame,0,frame.size)
                 }
                 if(bitmap != null){
-
                     val canvas = preView.holder.lockCanvas()
                     Logger.d("canvas")
                     canvas.drawBitmap(bitmap!!,0f,0f,paint)
