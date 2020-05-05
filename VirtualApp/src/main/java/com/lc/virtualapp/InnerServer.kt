@@ -7,17 +7,13 @@ import android.graphics.YuvImage
 import android.nfc.Tag
 import android.util.Log
 import android.util.Size
-import com.lc.command.BytesUtils
-import com.lc.command.COMMAND_FLAG
-import com.lc.command.TYPE_VIDEO
-import com.lc.command.UDP_PORT
+import com.lc.command.*
 import java.io.*
 import java.net.*
 import java.util.concurrent.LinkedBlockingQueue
 
 
 class InnerServer private constructor(){
-
 
     companion object{
         val TAG = "Server";
@@ -26,29 +22,32 @@ class InnerServer private constructor(){
         }
     }
 
-    private val mQueue: LinkedBlockingQueue<ByteArray>
+    private val frameQueue: LinkedBlockingQueue<ByteArray>
     private var client: Client? = null;
     var size: Size? = null
+    private var clientHost = ""
+
+    private var frameSocket: DatagramSocket?  = null
 
     init {
-        mQueue = LinkedBlockingQueue(20)
+        frameQueue = LinkedBlockingQueue(5)
 
     }
 
     fun seedFrame(frame: ByteArray){
-        mQueue.offer(frame)
+        frameQueue.offer(frame)
     }
 
 
-    inner class FindClientThread : Thread(){
+    inner class ResponseFindDeviceThread : Thread(){
         private var hasFind = false
         override fun run() {
             super.run()
-            Log.d(TAG,"start find client thread")
-            val socket  = DatagramSocket(UDP_PORT)
+            val socket  = DatagramSocket(DEVICE_FOUND_UDP_PORT)
             while (!hasFind){
                 val buf = ByteArray(32)
                 val packet = DatagramPacket(buf,buf.size)
+                Log.d(TAG,"wait for client found...")
                 socket.receive(packet)
                 packet.apply {
                     if(String(buf,0,length) == COMMAND_FLAG){
@@ -58,6 +57,9 @@ class InnerServer private constructor(){
                         val receivePacket = DatagramPacket(msg,msg.size,packet.address,packet.port)
                         socket.send(receivePacket)
                         hasFind = true
+                        clientHost = packet.address.hostAddress
+                        sleep(5000)
+                        FeedFrameThread().start()
                     }
                 }
             }
@@ -65,44 +67,25 @@ class InnerServer private constructor(){
         }
     }
 
-    inner class FeedFrameThread(val socket: Socket) : Thread(){
 
-        val bis: InputStream
-        val bos: OutputStream
-
-        init {
-            bis = socket.getInputStream()
-            bos = socket.getOutputStream()
-        }
-
+    inner class FeedFrameThread : Thread() {
         override fun run() {
-            var i = 0
-            while (true){
-                val frame = mQueue.take()
-                if(frame != null && i < 2){
-                    val image = YuvImage(frame,ImageFormat.NV21,size!!.width,size!!.height,null)
-                    val jpegByteArray = ByteArrayOutputStream()
-                    image.compressToJpeg(Rect(0,0,size!!.width,size!!.height),50,jpegByteArray)
-                    bos.write(TYPE_VIDEO)
-                    val len = jpegByteArray.size()
-                    val lenByte = BytesUtils.intToByteArray(len)
-                    bos.write(lenByte)
-                    Log.d(TAG,"write size:$len ${lenByte[0]} ${lenByte[1]} ${lenByte[2]} ${lenByte[3]}")
-                    bos.write(jpegByteArray.toByteArray(),0,len)
-                    bos.flush()
-                    //i++
+            super.run()
+            Log.d(TAG,"start feedFrameThread...")
+            val clientAddress = InetSocketAddress(clientHost, CLIENT_FRAME_UDP_PORT)
+            frameSocket = DatagramSocket(LOCAL_FRAME_UDP_PORT)
+            frameSocket?.sendBufferSize = 640 * 480 * 3 /2 ;
+            while (frameSocket != null) {
+
+                if(frameSocket?.isConnected() == false){
+                    frameSocket?.connect(clientAddress)
+                    sleep(2000)
+                    continue
                 }
+                val frame = frameQueue.take()
+                Log.d(TAG,"send frame size ${frame.size}")
+                frameSocket?.send(DatagramPacket(frame, frame.size))
             }
-        }
-
-
-        fun intToByteArray(i: Int): ByteArray {
-            val result = ByteArray(4)
-            result[0] = (i shr 24 and 0xFF).toByte()
-            result[1] = (i shr 16 and 0xFF).toByte()
-            result[2] = (i shr 8 and 0xFF).toByte()
-            result[3] = (i and 0xFF).toByte()
-            return result
         }
     }
 }

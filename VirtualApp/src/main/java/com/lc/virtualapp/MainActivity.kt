@@ -1,22 +1,24 @@
 package com.lc.virtualapp
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.*
 import android.hardware.camera2.*
 import android.media.ImageReader
+import android.os.*
+import android.renderscript.ScriptIntrinsicYuvToRGB
 import androidx.appcompat.app.AppCompatActivity
-import android.os.Bundle
-import android.os.Environment
-import android.os.Handler
-import android.os.HandlerThread
 import android.util.Log
 import android.util.Size
 import android.util.SparseIntArray
 import android.view.Surface
 import android.view.TextureView
+import androidx.core.app.ActivityCompat
 import com.example.android.camera2basic.CompareSizesByArea
 import com.example.android.camera2basic.ImageSaver
+import com.lc.jpeg.JpegTurbo
 import kotlinx.android.synthetic.main.activity_main.*
 import org.jetbrains.anko.toast
 import java.io.File
@@ -31,6 +33,7 @@ class MainActivity : AppCompatActivity() {
     private val surfaceTextureListener = object : TextureView.SurfaceTextureListener {
 
         override fun onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
+            Log.d(TAG,"onSurfaceTextureAvailable")
             openCamera(width, height)
         }
 
@@ -102,10 +105,6 @@ class MainActivity : AppCompatActivity() {
      */
     private var backgroundHandler: Handler? = null
 
-    /**
-     * An [ImageReader] that handles still image capture.
-     */
-    private var imageReader: ImageReader? = null
 
     private var preViewReader: ImageReader? = null
 
@@ -122,33 +121,77 @@ class MainActivity : AppCompatActivity() {
         backgroundHandler?.post(ImageSaver(it.acquireNextImage(), file))
     }
 
+
+    var save = false;
+
     private val onPreViewListener = ImageReader.OnImageAvailableListener {
         val image = it.acquireLatestImage()
 
-        val yuvBuffer = ByteArray(image.width * image.height * 3 / 2 )
+        if(image == null) return@OnImageAvailableListener
 
-        val yBuffer = image.planes[0].buffer
-        var len = image.width * image.height
-        yBuffer.get(yuvBuffer,0,len)
+        val width = image.width;
+        val height = image.height
+        Log.d(TAG,"width:$width,height:$height,format:${image.format}")
+        Log.d(TAG,"plane[0] rowStride:${image.planes[0].rowStride},pixelStride:${image.planes[0].pixelStride},remain:${image.planes[0].buffer.remaining()},capacity:${image.planes[0].buffer.capacity()}")
+        Log.d(TAG,"plane[1] rowStride:${image.planes[1].rowStride},pixelStride:${image.planes[1].pixelStride},remain:${image.planes[1].buffer.remaining()},capacity:${image.planes[1].buffer.capacity()}")
+        Log.d(TAG,"plane[2] rowStride:${image.planes[2].rowStride},pixelStride:${image.planes[2].pixelStride},remain:${image.planes[2].buffer.remaining()},capacity:${image.planes[2].buffer.capacity()}")
+
+        val yuvData = ByteArray(width * height * ImageFormat.getBitsPerPixel(ImageFormat.YUV_420_888)/8);
+
+        var rowStride = image.planes[0].rowStride
+        val padding = rowStride - width
+        var pos = 0
+        var yBuffer = image.planes[0].buffer
+        if(padding == 0){
+            pos = yBuffer.remaining()
+            yBuffer.get(yuvData,0,pos)
+        }else{
+            var yBufferPos = 0
+            for (row in 0.. height){
+                yBuffer.position(yBufferPos)
+                yBuffer.get(yuvData,pos,image.width)
+                yBufferPos += rowStride
+                pos += image.width
+            }
+        }
+
         val uBuffer = image.planes[1].buffer
-        var pixelStride = image.planes[1].pixelStride
-        var i =  0
-        while ( i < uBuffer.remaining()){
-            yuvBuffer[len++] = uBuffer.get(i)
-            i += pixelStride
+        val uRemaining = uBuffer.remaining()
+        val uPixelStride = image.planes[1].pixelStride
+        var i = 0
+        while (i < uRemaining){
+            yuvData[pos++] = uBuffer[i]
+            i += uPixelStride
 
+            if(padding == 0) continue
+
+            val rowLen = i % rowStride
+            if(rowLen >= width){
+                i += padding
+            }
         }
 
-        val vBuffer = image.planes[2].buffer
-        pixelStride = image.planes[2].pixelStride
         i = 0
-        while (i<vBuffer.remaining()){
-            yuvBuffer[len++] = vBuffer.get(i)
-            i += pixelStride
+        val vBuffer = image.planes[2].buffer
+        val vRemaining = vBuffer.remaining()
+        val vPixelStride = image.planes[2].pixelStride
+        while (i < vRemaining){
+            yuvData[pos++] = vBuffer[i]
+            i += vPixelStride
+
+            if(padding == 0) continue
+
+            val rowLen = i % rowStride
+
+            if(rowLen >= width){
+                i += padding
+            }
         }
-        InnerServer.instance.size = Size(image.width,image.height)
-        InnerServer.instance.seedFrame(yuvBuffer)
+
         image.close()
+
+
+        JpegTurbo.turbo.yuvJpeg(yuvData,width,height)
 
     }
 
@@ -192,7 +235,6 @@ class MainActivity : AppCompatActivity() {
         private fun process(result: CaptureResult) {
             when (state) {
                 STATE_PREVIEW -> Unit // Do nothing when the camera preview is working normally.
-                STATE_WAITING_LOCK -> capturePicture(result)
                 STATE_WAITING_PRECAPTURE -> {
                     // CONTROL_AE_STATE can be null on some devices
                     val aeState = result.get(CaptureResult.CONTROL_AE_STATE)
@@ -207,28 +249,11 @@ class MainActivity : AppCompatActivity() {
                     val aeState = result.get(CaptureResult.CONTROL_AE_STATE)
                     if (aeState == null || aeState != CaptureResult.CONTROL_AE_STATE_PRECAPTURE) {
                         state = STATE_PICTURE_TAKEN
-                        captureStillPicture()
                     }
                 }
             }
         }
 
-        private fun capturePicture(result: CaptureResult) {
-            val afState = result.get(CaptureResult.CONTROL_AF_STATE)
-            if (afState == null) {
-                captureStillPicture()
-            } else if (afState == CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED
-                || afState == CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED) {
-                // CONTROL_AE_STATE can be null on some devices
-                val aeState = result.get(CaptureResult.CONTROL_AE_STATE)
-                if (aeState == null || aeState == CaptureResult.CONTROL_AE_STATE_CONVERGED) {
-                    state = STATE_PICTURE_TAKEN
-                    captureStillPicture()
-                } else {
-                    runPrecaptureSequence()
-                }
-            }
-        }
 
         override fun onCaptureProgressed(session: CameraCaptureSession,
                                          request: CaptureRequest,
@@ -249,6 +274,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        Log.d(TAG,"onCreate")
         sendData.setOnClickListener {
 
         }
@@ -256,17 +282,39 @@ class MainActivity : AppCompatActivity() {
         tackPicture.setOnClickListener {
             lockFocus()
         }
+
     }
 
 
+
+    var hasResume = false
+
     override fun onResume() {
         super.onResume()
+        if(hasResume) {
+            Log.d(TAG,"return!!!!")
+            return
+        }
+        Log.d(TAG,"onResume =>${textureView.isAvailable}")
         if (textureView.isAvailable) {
             openCamera(textureView.width, textureView.height)
         } else {
             textureView.surfaceTextureListener = surfaceTextureListener
         }
-        InnerServer.instance.FindClientThread().start()
+
+        hasResume = true
+
+        //InnerServer.instance.ResponseFindDeviceThread().start()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        Log.d(TAG,"onPause")
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        Log.d(TAG,"onConfigurationChanged")
     }
 
     override fun onStop() {
@@ -293,7 +341,7 @@ class MainActivity : AppCompatActivity() {
                 val cameraDirection = characteristics.get(CameraCharacteristics.LENS_FACING)
                 if (cameraDirection != null &&
                     cameraDirection == CameraCharacteristics.LENS_FACING_FRONT) {
-
+                        continue
                 }
 
                 val map = characteristics.get(
@@ -301,17 +349,9 @@ class MainActivity : AppCompatActivity() {
 
                 // For still image captures, we use the largest available size.
                 val largest = Collections.max(
-                    Arrays.asList(*map.getOutputSizes(ImageFormat.JPEG)),
+                    Arrays.asList(*map.getOutputSizes(ImageFormat.YUV_420_888)),
                     CompareSizesByArea()
                 )
-                imageReader = ImageReader.newInstance(largest.width, largest.height,
-                    ImageFormat.JPEG, /*maxImages*/ 2).apply {
-                    setOnImageAvailableListener(onImageAvailableListener, backgroundHandler)
-                }
-                preViewReader = ImageReader.newInstance(largest.width,largest.height,
-                    ImageFormat.YUV_420_888,2).apply {
-                    setOnImageAvailableListener(onPreViewListener,backgroundHandler)
-                }
 
                 // Find out if we need to swap dimension to get the preview size relative to sensor
                 // coordinate.
@@ -344,6 +384,12 @@ class MainActivity : AppCompatActivity() {
                     largest
                 )
                 Log.d(TAG,"preViewSize $previewSize")
+
+                preViewReader = ImageReader.newInstance(640,480,
+                    ImageFormat.YUV_420_888,2).apply {
+                    setOnImageAvailableListener(onPreViewListener,backgroundHandler)
+                }
+
                 // We fit the aspect ratio of TextureView to the size of preview we picked.
                 if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
                     textureView.setAspectRatio(previewSize.width, previewSize.height)
@@ -407,9 +453,10 @@ class MainActivity : AppCompatActivity() {
         val manager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
         try {
             // Wait for camera to open - 2.5 seconds is sufficient
-            if (!cameraOpenCloseLock.tryAcquire(2500, TimeUnit.MILLISECONDS)) {
-                throw RuntimeException("Time out waiting to lock camera opening.")
+            if (!cameraOpenCloseLock.tryAcquire(3000, TimeUnit.MILLISECONDS)) {
+                //throw RuntimeException("Time out waiting to lock camera opening.")
             }
+            Log.d(TAG,"openCamera Id $cameraId")
             manager.openCamera(cameraId, stateCallback, backgroundHandler)
         } catch (e: CameraAccessException) {
             Log.e(TAG, e.toString())
@@ -418,6 +465,8 @@ class MainActivity : AppCompatActivity() {
         }
 
     }
+
+
 
     /**
      * Closes the current [CameraDevice].
@@ -429,8 +478,8 @@ class MainActivity : AppCompatActivity() {
             captureSession = null
             cameraDevice?.close()
             cameraDevice = null
-            imageReader?.close()
-            imageReader = null
+            preViewReader?.close()
+            preViewReader = null
         } catch (e: InterruptedException) {
             throw RuntimeException("Interrupted while trying to lock camera closing.", e)
         } finally {
@@ -483,7 +532,7 @@ class MainActivity : AppCompatActivity() {
 
             // Here, we create a CameraCaptureSession for camera preview.
             cameraDevice?.createCaptureSession(
-                Arrays.asList(surface,imageReader?.surface,preViewReader?.surface),
+                Arrays.asList(surface,preViewReader!!.surface),
                 object : CameraCaptureSession.StateCallback() {
 
                     override fun onConfigured(cameraCaptureSession: CameraCaptureSession) {
@@ -588,54 +637,6 @@ class MainActivity : AppCompatActivity() {
 
     }
 
-    /**
-     * Capture a still picture. This method should be called when we get a response in
-     * [.captureCallback] from both [.lockFocus].
-     */
-    private fun captureStillPicture() {
-        try {
-
-            val rotation = windowManager.defaultDisplay.rotation
-
-            // This is the CaptureRequest.Builder that we use to take a picture.
-            val captureBuilder = cameraDevice?.createCaptureRequest(
-                CameraDevice.TEMPLATE_STILL_CAPTURE)?.apply {
-                addTarget(imageReader!!.surface)
-
-                // Sensor orientation is 90 for most devices, or 270 for some devices (eg. Nexus 5X)
-                // We have to take that into account and rotate JPEG properly.
-                // For devices with orientation of 90, we return our mapping from ORIENTATIONS.
-                // For devices with orientation of 270, we need to rotate the JPEG 180 degrees.
-                set(CaptureRequest.JPEG_ORIENTATION,
-                    (ORIENTATIONS.get(rotation) + sensorOrientation + 270) % 360)
-
-                // Use the same AE and AF modes as the preview.
-                set(CaptureRequest.CONTROL_AF_MODE,
-                    CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
-            }?.also { setAutoFlash(it) }
-
-            val captureCallback = object : CameraCaptureSession.CaptureCallback() {
-
-                override fun onCaptureCompleted(session: CameraCaptureSession,
-                                                request: CaptureRequest,
-                                                result: TotalCaptureResult) {
-                    file = File(Environment.getExternalStorageDirectory(),System.currentTimeMillis().toString().plus(".jpg"))
-                    toast("Saved: $file")
-                    Log.d(TAG, file.toString())
-                    unlockFocus()
-                }
-            }
-
-            captureSession?.apply {
-                stopRepeating()
-                abortCaptures()
-                capture(captureBuilder!!.build(), captureCallback, null)
-            }
-        } catch (e: CameraAccessException) {
-            Log.e(TAG, e.toString())
-        }
-
-    }
 
     /**
      * Unlock the focus. This method should be called when still image capture sequence is

@@ -55,13 +55,12 @@ class MainActivity : AppCompatActivity() {
                 updateHandler.postDelayed({
                     findProgress?.dismiss()
                     toast("未找到小车，请检查网络再试")
-                },10000)
+                },45000)
             }.show()
         }
 
         openCamera.setOnClickListener {
-
-
+            service.CameraFrameThread().start()
         }
 
         preView.holder.addCallback(callback)
@@ -95,7 +94,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         Logger.d("onResume")
-        service.preViewCallbakc = {
+        service.preViewCallback = {
             mFrameQueue.seedFrame(it)
         }
         service.msgCallback = {

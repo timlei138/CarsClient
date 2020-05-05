@@ -1,2 +1,3 @@
 include ':app', ':Car', ':Command', ':VirtualApp'
 rootProject.name='CarsClient'
+include ':libjpeg-turbo'

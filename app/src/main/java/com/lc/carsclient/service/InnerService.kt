@@ -1,5 +1,6 @@
 package com.lc.carsclient.service
 
+import android.util.Log
 import com.lc.command.*
 import com.orhanobut.logger.Logger
 
@@ -10,6 +11,9 @@ import java.net.*
 
 class InnerService private constructor(){
 
+
+    val TAG = "Client-InnerService";
+
     companion object {
 
         val instance: InnerService by lazy {
@@ -18,16 +22,17 @@ class InnerService private constructor(){
 
     }
 
-
     var writeThread: WriteThread? = null
     var readThread: ReadThread? = null
 
     private var host: String? = null
 
+    private var frameSocket: DatagramSocket? = null
 
-
-    var preViewCallbakc: ((data: ByteArray) -> Unit)? = null
+    var preViewCallback: ((data: ByteArray) -> Unit)? = null
     var msgCallback: ((msg: String) -> Unit)? = null
+
+
     //发送行车控制命令
     fun sendDrivingCommand(){
         writeThread?.sendDrivingCommand()
@@ -53,10 +58,10 @@ class InnerService private constructor(){
             val socket = DatagramSocket();
             val dataByte = COMMAND_FLAG.toByteArray()
             val packet = DatagramPacket(dataByte,dataByte.size,
-                InetAddress.getByName(BROADCAST_HOST), UDP_PORT)
+                InetAddress.getByName(BROADCAST_HOST), DEVICE_FOUND_UDP_PORT)
             socket.broadcast = true
             socket.send(packet)
-            Logger.d("$isFindDevice")
+            Logger.d("isFindDevice $isFindDevice")
             while (!isFindDevice){
                 val receiveBuf = ByteArray(32)
                 val receivePacket = DatagramPacket(receiveBuf,receiveBuf.size)
@@ -68,8 +73,6 @@ class InnerService private constructor(){
                         Logger.d("find device host-> $host")
                         isFindDevice = true
                         cb.invoke(true)
-
-
                     }
                 }
             }
@@ -131,15 +134,34 @@ class InnerService private constructor(){
                     dis.read(lenArray)
                     Logger.d("${lenArray[0]} ${lenArray[1]} ${lenArray[2]} ${lenArray[3]}")
                     val len = BytesUtils.byteArrayToInt(lenArray)
-                    Logger.d("lenght $len")
+                    Logger.d("data length $len")
                     val data = ByteArray(len)
                     dis.read(data,0,len)
-                    preViewCallbakc?.invoke(data)
+                    preViewCallback?.invoke(data)
                 }
             }
 
         }
 
+    }
+
+    inner class CameraFrameThread : Thread(){
+        override fun run() {
+            super.run()
+            var open = true;
+            Log.d(TAG,"CameraFrameThread start ...")
+            if(host?.isNotEmpty() == true){
+                frameSocket = DatagramSocket(CLIENT_FRAME_UDP_PORT)
+                val frameSize = 640 * 480 * 3 / 2
+                while (open){
+                    val data =  DatagramPacket(ByteArray(frameSize),frameSize)
+                    frameSocket?.receive(data)
+                    Log.d(TAG,"receiver data ${data.address.hostAddress} ${data.data.size}")
+                }
+
+            }
+
+        }
     }
 
 
