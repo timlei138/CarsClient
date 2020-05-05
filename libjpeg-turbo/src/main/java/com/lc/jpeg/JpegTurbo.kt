@@ -12,6 +12,8 @@ class JpegTurbo {
 
     val TAG = javaClass.simpleName
 
+    var frameCb:((ByteArray) -> Unit)? = null
+
     companion object{
 
         val turbo by lazy {
@@ -19,13 +21,9 @@ class JpegTurbo {
         }
     }
 
-
-    val jpegBuffer: ByteBuffer
-
     init {
         System.loadLibrary("native-jpeg")
-        jpegBuffer = ByteBuffer.allocateDirect(640 * 480)
-        init(jpegBuffer)
+
         File("/sdcard/jpg").apply {
             if(!exists()|| !isDirectory){
                 mkdirs()
@@ -33,20 +31,18 @@ class JpegTurbo {
         }
     }
 
-    private external fun init(byteBuffer: ByteBuffer);
 
     external fun yuvJpeg(yuv: ByteArray,width:Int,height: Int)
-
-
 
 
     private fun onFrame(byte: ByteArray){
         //Log.d(TAG,"jpeg -> ${jpegBuffer.capacity()}")
         //BitmapFactory.decodeByteArray(jpegBuffer.array(),0,jpegBuffer.capacity())
-        FileOutputStream(File("/sdcard/jpg/${System.currentTimeMillis()}.jpg")).let {
-            it.write(byte)
-            it.close()
-        }
+//        FileOutputStream(File("/sdcard/jpg/${System.currentTimeMillis()}.jpg")).let {
+//            it.write(byte)
+//            it.close()
+//        }
+        frameCb?.invoke(byte)
     }
 
 

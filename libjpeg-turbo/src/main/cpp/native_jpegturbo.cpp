@@ -17,7 +17,6 @@
 unsigned long jpeg_size = 640 * 480;
 unsigned char *jpeg_buff = (unsigned char*)malloc(640 * 480);
 unsigned char *pcheck;
-unsigned char* frameBuffer = NULL;
 
 
 
@@ -63,24 +62,16 @@ size_t writeFile(const char* path ,uint8_t *buff,int size){
 
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_lc_jpeg_JpegTurbo_init(JNIEnv* env,jobject thiz,jobject buffer){
-
-    void* address = env->GetDirectBufferAddress(buffer);
-    frameBuffer = static_cast<unsigned char *>(address);
-}
-extern "C" JNIEXPORT void JNICALL
 Java_com_lc_jpeg_JpegTurbo_yuvJpeg(JNIEnv* env,jobject thiz,jbyteArray yuv,jint width,jint height) {
     unsigned char* srcBuff =  (unsigned char*)env->GetByteArrayElements(yuv,JNI_FALSE);
     pcheck = jpeg_buff;
     int ret = yuv2Jpeg(srcBuff,width,height,TJSAMP_420, &jpeg_buff,&jpeg_size,75);
     LOGE("ret %d",ret);
     env->ReleaseByteArrayElements(yuv, reinterpret_cast<jbyte *>(srcBuff), 0);
+
     //const char* file = env->GetStringUTFChars(path,JNI_FALSE);
     //writeFile(file,jpeg_buff,jpeg_size);
     //env->ReleaseStringUTFChars(path,file);
-
-
-
 
     jclass c = env->GetObjectClass(thiz);
     jmethodID onFrame = env->GetMethodID(c,"onFrame", "([B)V");

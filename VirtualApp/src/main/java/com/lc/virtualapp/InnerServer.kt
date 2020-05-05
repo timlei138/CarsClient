@@ -8,6 +8,7 @@ import android.nfc.Tag
 import android.util.Log
 import android.util.Size
 import com.lc.command.*
+import com.lc.jpeg.JpegTurbo
 import java.io.*
 import java.net.*
 import java.util.concurrent.LinkedBlockingQueue
@@ -31,11 +32,13 @@ class InnerServer private constructor(){
 
     init {
         frameQueue = LinkedBlockingQueue(5)
-
+        JpegTurbo.turbo.frameCb = {
+            frameQueue.offer(it)
+        }
     }
 
     fun seedFrame(frame: ByteArray){
-        frameQueue.offer(frame)
+        JpegTurbo.turbo.yuvJpeg(frame,640,480)
     }
 
 
@@ -74,9 +77,8 @@ class InnerServer private constructor(){
             Log.d(TAG,"start feedFrameThread...")
             val clientAddress = InetSocketAddress(clientHost, CLIENT_FRAME_UDP_PORT)
             frameSocket = DatagramSocket(LOCAL_FRAME_UDP_PORT)
-            frameSocket?.sendBufferSize = 640 * 480 * 3 /2 ;
+            //frameSocket?.sendBufferSize = 640 * 480 * 3 /2 ;
             while (frameSocket != null) {
-
                 if(frameSocket?.isConnected() == false){
                     frameSocket?.connect(clientAddress)
                     sleep(2000)

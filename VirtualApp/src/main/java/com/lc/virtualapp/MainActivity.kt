@@ -122,8 +122,6 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-    var save = false;
-
     private val onPreViewListener = ImageReader.OnImageAvailableListener {
         val image = it.acquireLatestImage()
 
@@ -191,7 +189,7 @@ class MainActivity : AppCompatActivity() {
         image.close()
 
 
-        JpegTurbo.turbo.yuvJpeg(yuvData,width,height)
+        InnerServer.instance.seedFrame(yuvData)
 
     }
 
@@ -304,7 +302,7 @@ class MainActivity : AppCompatActivity() {
 
         hasResume = true
 
-        //InnerServer.instance.ResponseFindDeviceThread().start()
+        InnerServer.instance.ResponseFindDeviceThread().start()
     }
 
     override fun onPause() {
